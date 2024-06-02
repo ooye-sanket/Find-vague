@@ -1,0 +1,24 @@
+{
+  "name": "find-voyage",
+  "version": "1.0.0",
+  "description": "A better way to search!!",
+  "main": "app.js",
+  "scripts": {
+    "test": "npm run "
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ooye-sanket/Find-voyage.git"
+  },
+  "keywords": [
+    "ai",
+    "searchfuzz",
+    "optimiser"
+  ],
+  "author": "ooye-sanket",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ooye-sanket/Find-voyage/issues"
+  },
+  "homepage": "https://github.com/ooye-sanket/Find-voyage#readme"
+}
