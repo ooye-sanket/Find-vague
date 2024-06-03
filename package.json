@@ -4,7 +4,7 @@
   "description": "A better way to search!!",
   "main": "app.js",
   "type": "module",
-  "scripts": {
+  "scripts": { 
     "test": "npm run "
   },
   "repository": {
