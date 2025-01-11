@@ -3,22 +3,27 @@ import { pipeline, env } from "@xenova/transformers";
 // Since we will download the model from the Hugging Face Hub, we can skip the local model check
 env.allowLocalModels = false;
 
+// Due to a bug in onnxruntime-web, we must disable multithreading for now.
+// See https://github.com/microsoft/onnxruntime/issues/14445 for more information.
+// env.backends.onnx.wasm.numThreads = 1;
+
 class PipelineSingleton {
-    static task = "feature-extraction";
-    static model = "Supabase/gte-small";
-    static instance = null;
-  
-    static async getInstance(progress_callback = null) {
-      if (this.instance === null) {
-        this.instance = pipeline(this.task, this.model, { progress_callback });
-      }
-  
-      return this.instance;
+  static task = "feature-extraction";
+  static model = "Supabase/gte-small";
+  static instance = null;
+
+  static async getInstance(progress_callback = null) {
+    if (this.instance === null) {
+      this.instance = pipeline(this.task, this.model, { progress_callback });
     }
+
+    return this.instance;
   }
+}
 
 let model = null;
 let progress = null;
+
 /**
  * Asynchronously loads the model.
  *
@@ -51,7 +56,6 @@ async function loadModel() {
   }
 }
 
-
 /**
  * Throws an error indicating that the model has not been loaded.
  *
@@ -81,7 +85,7 @@ function modelNotLoadedErrorMessage() {
  * @param {Array<number>} embedding2Cache - The cached embedding for the second sentence.
  * @param {boolean} doesCache2Exist - Flag indicating whether the embedding for the second sentence is cached.
  * @throws {Error} If the model is not loaded, an error is thrown.
- * @returns {Promise<Object>} A Promise that resolves to an object containing the two sentences, their similarity score, and the embedding of the first sentence.
+ * @returns {Promise<{sentenceOne: string, sentenceTwo: string, alike: number, embedding1Cache: Array<number>}>} A Promise that resolves to an object containing the two sentences, their similarity score, and the embedding of the first sentence.
  *
  * @example
  * try {
@@ -98,7 +102,7 @@ const classify = async (
   embedding1Cache,
   doesCache1Exist,
   embedding2Cache,
-  doesCache2Exist
+  doesCache2Exist,
 ) => {
   if (!doesCache2Exist && !model) {
     modelNotLoadedErrorMessage();
@@ -173,10 +177,10 @@ const classify = async (
  * @async
  * @function
  * @param {string} sentence - The sentence to be compared.
- * @param {Array<string|Object>} array - The array of sentences to be compared. Each element can be a string or an object with `sentenceTwo` and `embedding` properties.
+ * @param {Array<string|{sentenceTwo: string, embedding: Array<number>}>} array - The array of sentences to be compared. Each element can be a string or an object with `sentenceTwo` and `embedding` properties.
  * @param {boolean} doesCache2Exist - Flag indicating whether the embeddings for the sentences in the array are cached.
  * @throws {Error} If the model is not loaded, an error is thrown.
- * @returns {Promise<Object>} A Promise that resolves to an object containing the input sentence and the array of sentences with their similarity scores.
+ * @returns {Promise<{sentenceOne: string, array: Array<{sentenceTwo: string, alike: number}>}>} A Promise that resolves to an object containing the input sentence and the array of sentences with their similarity scores.
  *
  * @example
  * try {
@@ -190,7 +194,7 @@ const classify = async (
 const compareSentenceToArray = async (
   sentence,
   array,
-  doesCache2Exist = false
+  doesCache2Exist = false,
 ) => {
   if (!doesCache2Exist && !model) {
     modelNotLoadedErrorMessage();
@@ -205,7 +209,7 @@ const compareSentenceToArray = async (
       cache,
       i !== 0,
       array[i].embedding ? array[i].embedding : null,
-      doesCache2Exist
+      doesCache2Exist,
     );
     if (i === 0) {
       cache = embedding1Cache;
@@ -222,14 +226,17 @@ const compareSentenceToArray = async (
 /**
  * Asynchronously compares a sentence to an array of sentences and returns the results in order of similarity.
  *
- * This function takes a sentence and an array of sentences as input. It compares the input sentence to each sentence in the array using the `compareSentenceToArray` function, which calculates the cosine similarity between the sentences.
- * The result is an object containing the input sentence and an array of objects, each containing a sentence from the input array and the calculated similarity. The array is sorted in descending order of similarity.
+ * This function takes a sentence and an array of sentences as input. It uses the `compareSentenceToArray` function to calculate the cosine similarity between the input sentence and each sentence in the array.
+ * The function then sorts the results in descending order of similarity and returns an object containing the input sentence and the sorted array of comparison results.
  *
  * @async
  * @function
  * @param {string} sentence - The sentence to compare to the array of sentences.
  * @param {Array<string>} array - The array of sentences to compare to the input sentence.
- * @returns {Object} The result object containing the input sentence and an array of objects, each containing a sentence from the input array and the calculated similarity, sorted in descending order of similarity.
+ * @returns {Promise<{sentenceOne: string, array: Array<{sentenceTwo: string, alike: number}>}>} A Promise that resolves to an object containing the input sentence and an array of objects. Each object in the array contains:
+ *   - `sentenceTwo`: A sentence from the input array.
+ *   - `alike`: The cosine similarity score between the input sentence and `sentenceTwo`.
+ *   The array is sorted in descending order of similarity score.
  * @throws {Error} If the model has not been loaded.
  *
  * @example
@@ -250,7 +257,7 @@ const arrayInOrder = async (sentence, array) => {
   const { sentenceOne, array: returnedArray } = await compareSentenceToArray(
     sentence,
     array,
-    false
+    false,
   );
 
   returnedArray.sort((a, b) => b.alike - a.alike);
@@ -285,36 +292,40 @@ function getProgress() {
 /**
  * Compares two sentences using the loaded model.
  *
- * This function takes two sentences as input and uses the `classify` function to compare them. If the model has not been loaded, it throws an error.
+ * This function takes two sentences as input and uses the `classify` function to calculate the cosine similarity between them. If the model has not been loaded, it throws an error.
  *
+ * @async
  * @function
  * @param {string} sentenceOne - The first sentence to compare.
  * @param {string} sentenceTwo - The second sentence to compare.
- * @returns {Object} The result object containing the two input sentences and the calculated similarity.
+ * @returns {Promise<{sentenceOne: string, sentenceTwo: string, alike: number}>} A Promise that resolves to an object containing:
+ *   - `sentenceOne`: The first input sentence.
+ *   - `sentenceTwo`: The second input sentence.
+ *   - `alike`: The cosine similarity score between `sentenceOne` and `sentenceTwo`.
  * @throws {Error} If the model has not been loaded.
  *
  * @example
  * try {
- *   const result = compareTwoSentences("This is a sentence.", "This is another sentence.");
+ *   const result = await compareTwoSentences("This is a sentence.", "This is another sentence.");
  *   console.log(result);
  * } catch (error) {
  *   console.error(error);
  * }
  */
 
-function compareTwoSentences(sentenceOne, sentenceTwo) {
+async function compareTwoSentences(sentenceOne, sentenceTwo) {
   if (!model) {
     modelNotLoadedErrorMessage();
     return;
   }
 
-  const { alike } = classify(
+  const { alike } = await classify(
     sentenceOne,
     sentenceTwo,
     null,
     false,
     null,
-    false
+    false,
   );
 
   return { sentenceOne, sentenceTwo, alike };
@@ -333,7 +344,7 @@ function compareTwoSentences(sentenceOne, sentenceTwo) {
  * @function
  * @param {Array<string>} array - The array of sentences for which embeddings are to be generated.
  * @throws {Error} If the model is not loaded, an error is thrown.
- * @returns {Promise<Array<Object>>} A Promise that resolves to an array of objects, each containing a sentence and its corresponding embedding.
+ * @returns {Promise<Array<{sentenceTwo: string, embedding: Array<number>}>>} A Promise that resolves to an array of objects, each containing a sentence and its corresponding embedding.
  *
  * @example
  * try {
@@ -369,8 +380,8 @@ async function getCached(array) {
  * @async
  * @function
  * @param {string} sentence - The sentence to compare.
- * @param {Array} cachedArray - The array of cached sentences to compare against.
- * @returns {Promise<Object>} An object containing the original sentence and an array of comparison results.
+ * @param {Array<{sentenceTwo: string, embedding: Array<number>}>} cachedArray - The array of cached sentences to compare against.
+ * @returns {Promise<{sentenceOne: string, array: Array<{sentenceTwo: string, alike: number}>}>} An object containing the original sentence and an array of comparison results.
  *
  * @example
  * const result = await cachedCompareSentenceToArray('Hello world', cachedSentences);
@@ -381,7 +392,7 @@ async function cachedCompareSentenceToArray(sentence, cachedArray) {
   cachedArray.map((item) => {
     if (!item.sentenceTwo) {
       throw new Error(
-        "Each item in the cachedArray must have a sentenceTwo property"
+        "Each item in the cachedArray must have a sentenceTwo property",
       );
     }
     return {
@@ -392,7 +403,7 @@ async function cachedCompareSentenceToArray(sentence, cachedArray) {
   const { sentenceOne, array: returnedArray } = await compareSentenceToArray(
     sentence,
     cachedArray,
-    true
+    true,
   );
 
   return {
@@ -415,8 +426,8 @@ async function cachedCompareSentenceToArray(sentence, cachedArray) {
  * @async
  * @function
  * @param {string} sentence - The sentence to be compared.
- * @param {Array<string|Object>} cachedArray - The array of sentences to be compared. Each element is a object with `sentenceTwo` and `embedding` properties.
- * @returns {Promise<Object>} A Promise that resolves to an object containing the input sentence and the sorted array of sentences with their similarity scores.
+ * @param {Array<string|{sentenceTwo: string, embedding: Array<number>}>} cachedArray - The array of sentences to be compared. Each element is a object with `sentenceTwo` and `embedding` properties.
+ * @returns {Promise<{sentenceOne: string, array: Array<{sentenceTwo: string, alike: number}>}>} A Promise that resolves to an object containing the input sentence and the sorted array of sentences with their similarity scores.
  *
  * @example
  * try {
@@ -431,7 +442,7 @@ async function cachedArrayInOrder(sentence, cachedArray) {
   cachedArray.map((item) => {
     if (!item.sentenceTwo) {
       throw new Error(
-        "Each item in the cachedArray must have a sentenceTwo property"
+        "Each item in the cachedArray must have a sentenceTwo property",
       );
     }
     return {
@@ -442,7 +453,7 @@ async function cachedArrayInOrder(sentence, cachedArray) {
   const { sentenceOne, array: returnedArray } = await compareSentenceToArray(
     sentence,
     cachedArray,
-    true
+    true,
   );
 
   returnedArray.sort((a, b) => b.alike - a.alike);
@@ -462,7 +473,7 @@ async function cachedArrayInOrder(sentence, cachedArray) {
  * @param {Array<string>} array - The array of sentences to compare.
  * @param {number} numberOfResults - The number of top results to return. This parameter constrains the size of the returned array.
  * @throws {Error} Will throw an error if the model is not loaded or if numberOfResults is less than or equal to 0.
- * @returns {Promise<Object>} A promise that resolves to an object containing the original sentence and an array of the top results.
+ * @returns {Promise<{sentenceOne: string, array: Array<{sentenceTwo: string, alike: number}>}>} A promise that resolves to an object containing the original sentence and an array of the top results.
  * The top results array contains objects with the properties 'sentenceTwo' and 'alike', where 'sentenceTwo' is a sentence from the input array and 'alike' is its similarity score to the original sentence.
  */
 
@@ -488,7 +499,7 @@ async function getTop(sentence, array, numberOfResults) {
       cache,
       i !== 0,
       null,
-      false
+      false,
     );
     if (i === 0) {
       cache = embedding1Cache;
@@ -624,7 +635,7 @@ class LinkedListInAlikeOrder {
    */
   _audit() {
     if (this.length > this.maxLength) {
-      this._deletelastNode();
+      this._deleteLastNode();
     }
   }
 
@@ -669,4 +680,3 @@ const vagueFinder = {
 };
 
 export { vagueFinder };
-
