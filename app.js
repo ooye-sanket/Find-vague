@@ -7,10 +7,10 @@ env.allowLocalModels = false;
 // See https://github.com/microsoft/onnxruntime/issues/14445 for more information.
 // env.backends.onnx.wasm.numThreads = 1;
 
-class PipelineSingleton {
-  static task = "feature-extraction";
-  static model = "Supabase/gte-small";
-  static instance = null;
+ class PipelineSingleton {
+   static task = "feature-extraction";
+   static model = "Supabase/gte-small";
+   static instance = null;
 
   static async getInstance(progress_callback = null) {
     if (this.instance === null) {
