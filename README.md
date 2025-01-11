@@ -1,6 +1,9 @@
 # find-vague
 
 `findvague` is a simple and easy to use package for sentences similarity operations. Was mainly created to be used in searching operations.
+You can try out a demo at [Find Vauge Demo](https://demo-vague-finder.netlify.app/)
+
+![untitled](https://github.com/user-attachments/assets/a39e686b-e8f6-4490-a97a-dca11aefef95) 
 
 ## Installation
 
