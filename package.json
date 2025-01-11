@@ -1,10 +1,10 @@
 {
   "name": "find-voyage",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A better way to search!!",
   "main": "app.js",
   "type": "module",
-  "scripts": { 
+  "scripts": {
     "test": "npm run "
   },
   "repository": {
